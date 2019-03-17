@@ -1,7 +1,7 @@
-import matplotlib.pyplot as mpl
+#import matplotlib.pyplot as mpl
 import scipy.cluster.hierarchy as sch, random, numpy as np, pandas as pd
 import itertools
-
+from math import floor, ceil
 # ———————————————————————————————————————
 def getIVP(cov, **kargs):
 
@@ -49,16 +49,16 @@ def getRecBipart(cov, sortIx):
     w = pd.Series(1, index=sortIx)
     cItems = [sortIx]  # initialize all items in one cluster
     while len(cItems) > 0:
-        cItems = [i[j:k] for i in cItems for j, k in ((0, len(i) / 2), \
-                                                      (len(i) / 2, len(i))) if len(i) > 1]  # bi-section
-    for i in range(0, len(cItems), 2):  # parse in pairs
-        cItems0 = cItems[i]  # cluster 1
-    cItems1 = cItems[i + 1]  # cluster 2
-    cVar0 = getClusterVar(cov, cItems0)
-    cVar1 = getClusterVar(cov, cItems1)
-    alpha = 1 - cVar0 / (cVar0 + cVar1)
-    w[cItems0] *= alpha  # weight 1
-    w[cItems1] *= 1 - alpha  # weight 2
+        cItems = [i[j:k] for i in cItems for j, k in ((0, floor(len(i) / 2)), \
+                                                      (floor(len(i) / 2), len(i))) if len(i) > 1]  # bi-section
+        for i in range(0, len(cItems), 2):  # parse in pairs
+            cItems0 = cItems[i]  # cluster 1
+            cItems1 = cItems[i + 1]  # cluster 2
+            cVar0 = getClusterVar(cov, cItems0)
+            cVar1 = getClusterVar(cov, cItems1)
+            alpha = 1 - cVar0 / (cVar0 + cVar1)
+            w[cItems0] *= alpha  # weight 1
+            w[cItems1] *= 1 - alpha  # weight 2
     return w
 
 
@@ -117,7 +117,7 @@ def generateData(nObs, size0, size1, sigma1):
 def main():
 
     from get_data import df0 as x
-    x = x.iloc[:1000,:10]
+    x = x.iloc[:1000,:]
     x.fillna(0, inplace=True)
     # # 1) Generate correlated data
     # nObs, size0, size1, sigma1 = 10000, 5, 5, .25
@@ -146,8 +146,9 @@ def main():
     # plotCorrMatrix('HRP3_corr1.png', df0, labels=df0.columns)
     # # 4) Capital allocation
 
-    hrp = getRecBipart(cov, sortIx)
-    # print (hrp)
+    hrp = getRecBipart(cov, labelIx)
+    print (hrp)
+    print(sum(hrp))
     return
 # ———————————————————————————————————————
 if __name__ == '__main__': main()
