@@ -1,6 +1,6 @@
 import matplotlib.pyplot as mpl
 import scipy.cluster.hierarchy as sch, random, numpy as np, pandas as pd
-
+import itertools
 
 # ———————————————————————————————————————
 def getIVP(cov, **kargs):
@@ -24,6 +24,7 @@ def getClusterVar(cov, cItems):
 
 
 # ———————————————————————————————————————
+# ———————————————————————————————————————
 def getQuasiDiag(link):
     # Sort clustered items by distance
     link = link.astype(int)
@@ -31,17 +32,15 @@ def getQuasiDiag(link):
     numItems = link[-1, 3]  # number of original items
     while sortIx.max() >= numItems:
         sortIx.index = range(0, sortIx.shape[0] * 2, 2)  # make space
-    df0 = sortIx[sortIx >= numItems]  # find clusters
-    i = df0.index;
-    j = df0.values - numItems
-    sortIx[i] = link[j, 0]  # item 1
-    df0 = pd.Series(link[j, 1], index=i + 1)
-    sortIx = sortIx.append(df0)  # item 2
-    sortIx = sortIx.sort_index()  # re-sort
-    sortIx.index = range(sortIx.shape[0])  # re-index
+        df0 = sortIx[sortIx >= numItems]  # find clusters
+        i = df0.index;
+        j = df0.values - numItems
+        sortIx[i] = link[j, 0]  # item 1
+        df0 = pd.Series(link[j, 1], index=i + 1)
+        sortIx = sortIx.append(df0)  # item 2
+        sortIx = sortIx.sort_index()  # re-sort
+        sortIx.index = range(sortIx.shape[0])  # re-index
     return sortIx.tolist()
-
-
 # ———————————————————————————————————————
 def getRecBipart(cov, sortIx):
 
@@ -72,6 +71,14 @@ def correlDist(corr):
     dist = ((1 - corr) / 2.) ** .5  # distance matrix
     return dist
 
+def euclideanDist(dist_mat):
+    dist = dist_mat.values
+    result = np.zeros_like(dist)
+    for t in itertools.product(range(dist.shape[0]), range(dist.shape[1])):
+        i,j = t
+        result[i,j] = np.sum((dist[:,i] - dist[:,j])**2)**0.5
+    return pd.DataFrame(result, columns=dist_mat.columns, index=dist_mat.index)
+
 
 # ———————————————————————————————————————
 def plotCorrMatrix(path, corr, labels=None):
@@ -94,11 +101,11 @@ def generateData(nObs, size0, size1, sigma1):
 
     # Time series of correlated variables
     # 1) generating some uncorrelated data
-    np.random.seed(seed=12345);
+    np.random.seed(seed=12345)
     random.seed(12345)
     x = np.random.normal(0, 1, size=(nObs, size0))  # each row is a variable
     # 2) creating correlation between the variables
-    cols = [random.randint(0, size0 – 1) for i in range(size1)]
+    cols = [random.randint(0, size0-1) for i in range(size1)]
     y = x[:, cols] + np.random.normal(0, sigma1, size=(nObs, len(cols)))
     x = np.append(x, y, axis=1)
     x = pd.DataFrame(x, columns=range(1, x.shape[1] + 1))
@@ -109,24 +116,38 @@ def generateData(nObs, size0, size1, sigma1):
 # ———————————————————————————————————————
 def main():
 
+    from get_data import df0 as x
+    x = x.iloc[:1000,:10]
+    x.fillna(0, inplace=True)
+    # # 1) Generate correlated data
+    # nObs, size0, size1, sigma1 = 10000, 5, 5, .25
+    # x, cols = generateData(nObs, size0, size1, sigma1)
+    # print([(j + 1, size0 + i) for i, j in enumerate(cols, 1)])
 
-    # 1) Generate correlated data
-    nObs, size0, size1, sigma1 = 10000, 5, 5, .25
-    x, cols = generateData(nObs, size0, size1, sigma1)
-    print([(j + 1, size0 + i) for i, j in enumerate(cols, 1)])
+
     cov, corr = x.cov(), x.corr()
+    print(cov)
+    print(corr)
     # 2) compute and plot correl matrix
-    plotCorrMatrix('HRP3_corr0.png', corr, labels=corr.columns)
+    #plotCorrMatrix('HRP3_corr0.png', corr, labels=corr.columns)
     # 3) cluster
     dist = correlDist(corr)
-    link = sch.linkage(dist, 'single')
+    print(dist)
+    eu_dist = euclideanDist(dist)
+    link = sch.linkage(eu_dist, 'single')
+    #link = sch.linkage(dist, 'single')
+    print(link)
     sortIx = getQuasiDiag(link)
-    sortIx = corr.index[sortIx].tolist()  # recover labels
-    df0 = corr.loc[sortIx, sortIx]  # reorder
-    plotCorrMatrix('HRP3_corr1.png', df0, labels=df0.columns)
-    # 4) Capital allocation
+    labelIx = corr.index[sortIx].tolist()  # recover labels
+
+    print(sortIx)
+    # sortIx = corr.index[sortIx].tolist()  # recover labels
+    # df0 = corr.loc[sortIx, sortIx]  # reorder
+    # plotCorrMatrix('HRP3_corr1.png', df0, labels=df0.columns)
+    # # 4) Capital allocation
+
     hrp = getRecBipart(cov, sortIx)
-    print (hrp)
+    # print (hrp)
     return
 # ———————————————————————————————————————
 if __name__ == '__main__': main()
