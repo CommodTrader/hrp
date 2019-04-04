@@ -1,16 +1,29 @@
-#import matplotlib.pyplot as mpl
+import matplotlib.pyplot as mpl
 import scipy.cluster.hierarchy as sch, random, numpy as np, pandas as pd
 import itertools
 from math import floor, ceil
 # ———————————————————————————————————————
 def getIVP(cov, **kargs):
-
-
-    # Compute the inverse-variance portfolio
+    """
+    Compute the inverse-variance portfolio
+    :param cov: Covariance matrix
+    :param kargs:
+    :return:
+    """
     ivp = 1. / np.diag(cov)
     ivp /= ivp.sum()
     return ivp
 
+def getICOVP(cov):
+    """
+    Compute the inverse-covariance portfolio
+    :param cov:
+    :return:
+    """
+    icovp = np.linalg.inv(cov)
+    icovp /= icovp.sum()
+
+    return np.dot(icovp, np.ones(icovp.shape[0]))
 
 # ———————————————————————————————————————
 def getClusterVar(cov, cItems):
@@ -79,6 +92,12 @@ def euclideanDist(dist_mat):
         result[i,j] = np.sum((dist[:,i] - dist[:,j])**2)**0.5
     return pd.DataFrame(result, columns=dist_mat.columns, index=dist_mat.index)
 
+def portfolio_variance(portfolio, returns):
+    portfolio_returns = (portfolio * returns).sum(axis=1)
+
+    return portfolio_returns.std(axis=0)
+
+
 
 # ———————————————————————————————————————
 def plotCorrMatrix(path, corr, labels=None):
@@ -112,43 +131,59 @@ def generateData(nObs, size0, size1, sigma1):
 
     return x, cols
 
+def rolling_cov(returns, lookback=20, cov=True):
+    """
+
+    :param returns: N obs by P assets
+    :param lookback: lookback period
+    :return: an N-L by P by P matrix of historical covariances
+    """
+    (N, P) = returns.shape
+    out = np.zeros((N-lookback,P,P))
+    for i in range(lookback, N):
+        ret_slice = returns.iloc[i-lookback:i, :]
+        slice = ret_slice.cov().values if cov else ret_slice.corr().values
+        out[i-lookback, :, :] = slice
+
+    return out
 
 # ———————————————————————————————————————
 def main():
 
     from get_data import df0 as x
-    x = x.iloc[:1000,:]
+    lookback=500
     x.fillna(0, inplace=True)
-    # # 1) Generate correlated data
-    # nObs, size0, size1, sigma1 = 10000, 5, 5, .25
-    # x, cols = generateData(nObs, size0, size1, sigma1)
-    # print([(j + 1, size0 + i) for i, j in enumerate(cols, 1)])
+    ivar_df = pd.DataFrame().reindex_like(x)
+    hrp_df = pd.DataFrame().reindex_like(x)
+    icov_df = pd.DataFrame().reindex_like(x)
+    T = x.shape[0] - 500
+    for i in range(lookback, x.shape[0]):
+        ret = x.iloc[i-lookback:i, :]
+        cov, corr = ret.cov(), ret.corr()
+        dist = correlDist(corr)
+        eu_dist = euclideanDist(dist)
+        link = sch.linkage(eu_dist, 'single')
+        sortIx = getQuasiDiag(link)
+        labelIx = corr.index[sortIx].tolist()  # recover labels
+        hrp = pd.Series(getRecBipart(cov, labelIx))
+        invVar = pd.Series(getIVP(cov), index=cov.index)
+        invCov = pd.Series(getICOVP(cov), index=cov.index)
+        hrp_df.iloc[i, :] = hrp
+        ivar_df.iloc[i, :] = invVar
+        icov_df.iloc[i, :] = invCov
+        print(i / T)
 
+    hrp_df.to_csv('hrp.csv')
+    ivar_df.to_csv('ivar.csv')
+    icov_df.to_csv('icov.csv')
 
-    cov, corr = x.cov(), x.corr()
-    print(cov)
-    print(corr)
-    # 2) compute and plot correl matrix
-    #plotCorrMatrix('HRP3_corr0.png', corr, labels=corr.columns)
-    # 3) cluster
-    dist = correlDist(corr)
-    print(dist)
-    eu_dist = euclideanDist(dist)
-    link = sch.linkage(eu_dist, 'single')
-    #link = sch.linkage(dist, 'single')
-    print(link)
-    sortIx = getQuasiDiag(link)
-    labelIx = corr.index[sortIx].tolist()  # recover labels
-
-    print(sortIx)
-    # sortIx = corr.index[sortIx].tolist()  # recover labels
-    # df0 = corr.loc[sortIx, sortIx]  # reorder
-    # plotCorrMatrix('HRP3_corr1.png', df0, labels=df0.columns)
-    # # 4) Capital allocation
-
-    hrp = getRecBipart(cov, labelIx)
-    print (hrp)
-    print(sum(hrp))
-    return
+    return hrp_df, ivar_df, icov_df
 # ———————————————————————————————————————
-if __name__ == '__main__': main()
+if __name__ == '__main__':
+    main()
+    # from get_data import df0 as x
+    # x.fillna(0, inplace=True)
+    # wt = pd.read_csv('ivar.csv', index_col='datetime')
+    # print(x.shape)
+    # print(wt.shape)
+    # print(portfolio_variance(wt, x))
